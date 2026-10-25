@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sdk:
+    name: SDK (Apache-2.0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt required for:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -count=1 ./...
+
+      - name: Build example plugin
+        run: go build -o /tmp/iot-driver-hello ./examples/hello-driver
+
+      # 许可证边界守卫：SDK 是 Apache-2.0，绝不能反向依赖 AGPL 的网关核心。
+      # 否则「第三方可以闭源写驱动」这句话在法律上就不成立。
+      - name: SDK must not depend on the AGPL core
+        run: |
+          if grep -rn '"iot-gateway/' --include='*.go' .; then
+            echo "::error::SDK imports the AGPL gateway core"
+            exit 1
+          fi
+          if go list -deps ./... | grep -qE '^(iot-gateway|github\.com/Ellisata/iot-gateway)(/|$)'; then
+            echo "::error::SDK dependency graph contains the AGPL gateway core"
+            exit 1
+          fi
+
+  # testkit 是独立模块（自带 go.mod），根模块的 go test ./... 不会覆盖它。
+  testkit:
+    name: Test kit (Apache-2.0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: testkit
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: testkit/go.mod
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt required for:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -count=1 ./...
+
+      - name: Test kit must not depend on the AGPL core
+        run: |
+          if grep -rn '"iot-gateway/' --include='*.go' .; then
+            echo "::error::testkit imports the AGPL gateway core"
+            exit 1
+          fi
+          if go list -deps ./... | grep -qE '^(iot-gateway|github\.com/Ellisata/iot-gateway)(/|$)'; then
+            echo "::error::testkit dependency graph contains the AGPL gateway core"
+            exit 1
+          fi

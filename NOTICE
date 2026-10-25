@@ -1,0 +1,8 @@
+iot-gateway SDK
+Copyright (c) 2026 Edwin and iot-gateway contributors
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file for the full license text.
+
+The iot-gateway gateway core is a separate program licensed under
+AGPL-3.0-only. This SDK does not import or link the gateway core.
