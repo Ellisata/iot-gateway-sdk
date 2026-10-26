@@ -117,14 +117,20 @@ The gateway loads it on start and hot-loads new plugin binaries at runtime.
 
 ## Compatibility
 
-| SDK | Wire `APIVersion` | Gateway |
+| SDK | Wire `APIVersion` | Gateways that accept it |
 |---|---|---|
-| v0.1.x | 4 | v0.2.x and later (until the next protocol bump) |
+| v0.1.x | 4 | Any gateway that accepts `APIVersion == 4` (currently v0.2.0 and later) |
 
 The wire protocol is versioned independently from the SDK's semver. A driver
 built against SDK v0.1.x is compatible with any gateway that accepts
 `APIVersion == 4`. A mismatch is rejected at handshake time, never silently
 misinterpreted.
+
+**The SDK version does not participate in the compatibility decision** — only
+`APIVersion` does. Official releases pair a gateway version, a
+`drivers.version` and an SDK version; the full pairing matrix, plugin
+compatibility range and `APIVersion` bump rules are in
+[Gateway version compatibility](https://github.com/Ellisata/iot-gateway/blob/main/docs/version-compatibility.md).
 
 ## Documentation
 
