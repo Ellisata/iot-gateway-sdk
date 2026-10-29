@@ -1,39 +1,38 @@
-# Contributing to the iot-gateway SDK
+# 为 iot-gateway SDK 贡献代码
 
-## License of contributions
+[English](CONTRIBUTING.en.md) | 简体中文
 
-This SDK is licensed under **Apache-2.0**. By contributing, you agree that your
-contribution is licensed under Apache-2.0 (inbound = outbound). **No CLA is
-required.**
+## 贡献的许可
 
-Every commit must carry a **Developer Certificate of Origin** sign-off:
+本 SDK 以 **Apache-2.0** 授权。提交贡献即表示你同意你的贡献以 Apache-2.0
+授权（入向 = 出向）。**无需 CLA。**
+
+每个提交都必须带有 **DCO（开发者原创声明）** 签署：
 
 ```bash
 git commit -s -m "driver: add ..."
 ```
 
-The sign-off certifies the statements in [DCO](DCO). CI rejects pull requests
-whose commits lack a matching `Signed-off-by:` trailer.
+该签署确认 [DCO](DCO) 中的声明。缺少匹配 `Signed-off-by:` 尾注的提交，其
+PR 会被 CI 拒绝。
 
-## Hard rules
+## 硬性规则
 
-1. **Never import the AGPL gateway core.** The SDK must remain usable by
-   proprietary drivers. CI runs a dependency-direction check; a PR that adds an
-   `iot-gateway` import will fail.
-2. **No third-party runtime dependencies** without prior discussion. The SDK is
-   deliberately stdlib-only so a driver has no supply-chain surface beyond the
-   Go toolchain.
-3. **Wire compatibility is a contract.** Do not change JSON field names, frame
-   layout, or binary payload order without bumping `driversdk.APIVersion` and
-   documenting the migration. Golden/parity tests must stay green.
-4. **Apache-2.0 SPDX header** is required on every new file:
+1. **绝不导入 AGPL 网关核心。** SDK 必须始终可供私有驱动使用。CI 会执行
+   依赖方向检查；引入 `iot-gateway` 导入的 PR 会失败。
+2. **未经讨论不引入第三方运行时依赖。** SDK 刻意只依赖标准库，使驱动除 Go
+   工具链之外没有供应链面。
+3. **线协议兼容性是契约。** 不要修改 JSON 字段名、帧布局或二进制载荷顺序，
+   除非同时提升 `driversdk.APIVersion` 并记录迁移。Golden/parity 测试必须
+   保持通过。
+4. **每个新文件都必须带 Apache-2.0 SPDX 头：**
 
    ```go
    // SPDX-License-Identifier: Apache-2.0
    // Copyright (c) 2026 Edwin and iot-gateway contributors
    ```
 
-## Development
+## 开发
 
 ```bash
 go test ./...
@@ -41,9 +40,8 @@ gofmt -l .
 go vet ./...
 ```
 
-The test suite is stdlib-only and runs without a gateway or a PLC.
+测试套件只依赖标准库，无需网关或 PLC 即可运行。
 
-## Reporting security issues
+## 报告安全问题
 
-Do not open a public issue for a vulnerability. Follow the security policy in
-the main repository (SECURITY.md) or contact the maintainers privately.
+请勿为漏洞开公开 issue。遵循主仓库的安全策略（SECURITY.md），或私下联系维护者。

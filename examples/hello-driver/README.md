@@ -1,19 +1,19 @@
-# Hello driver
+# Hello 驱动
 
-The smallest possible iot-gateway driver. It declares one protocol
-(`Hello.TCP`) and returns `42` for every point.
+[English](README.en.md) | 简体中文
+
+最小的 iot-gateway 驱动。它声明一种协议（`Hello.TCP`），对每个点位都返回 `42`。
 
 ```bash
 go build -o plugins/iot-driver-hello .
 ```
 
-Copy the binary into the gateway's `plugins/` directory, then create a device
-with protocol `Hello.TCP`. This example is only for wiring up a build; replace
-`Read` with your real protocol implementation.
+把二进制复制到网关的 `plugins/` 目录，然后创建协议为 `Hello.TCP` 的设备。
+本示例只用于跑通构建；把 `Read` 替换成你真正的协议实现。
 
-For a real driver, keep the same shape and add:
+真实驱动保持相同结构，并补充：
 
-- protocol-specific configuration parsing in `Connect`;
-- reconnect and timeout handling;
-- per-point quality codes (`driver.Quality*`) instead of always `QualityGood`;
-- tests with a fake device (no PLC required in CI).
+- 在 `Connect` 中解析协议相关的配置；
+- 重连与超时处理；
+- 每个点位的质量码（`driver.Quality*`），而不是一律 `QualityGood`；
+- 用假设备编写测试（CI 无需 PLC）。

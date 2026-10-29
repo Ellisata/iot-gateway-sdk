@@ -36,7 +36,7 @@ no second `.git` directory.
 Both halves of that arrangement are deliberate:
 
 - **Nested module, not merged into the root module.** The root module must stay
-  dependency-free (see hard rule 2 in [CONTRIBUTING](../CONTRIBUTING.md)); only
+  dependency-free (see hard rule 2 in [CONTRIBUTING](../CONTRIBUTING.en.md)); only
   `testkit` pulls `gopcua`. Importing `driver` or `driversdk` never drags it in.
 - **Same repository, not split out.** The fakes encode protocol behavior that
   evolves together with the drivers and their tests, so a fake fix and the

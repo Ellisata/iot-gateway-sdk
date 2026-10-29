@@ -53,6 +53,15 @@ type DiscoverySpec struct {
 	// Description 该协议扫描行为的说明（会提示到前端，如"默认只探站号 1"）。
 	Description string `json:"description,omitempty"`
 
+	// TitleI18n / DescriptionI18n 可选的按语言覆盖文案，键与 form-create 的
+	// options.language 一致（`zh-cn` / `en`）。缺省语言回退 Title / Description，
+	// 因此只需填非源语言（源语言是中文，通常只填 en）。
+	//
+	// 与 FormJSON 一样是**可选字段**，引入不递增 APIVersion：旧网关忽略未知字段，
+	// 旧插件不带这两个 map，前端回退原字段。
+	TitleI18n       map[string]string `json:"titleI18n,omitempty"`
+	DescriptionI18n map[string]string `json:"descriptionI18n,omitempty"`
+
 	// FormJSON 扫描选项表单（form-create schema），与 Protocol.FormJSON 同构。
 	// 用户在扫描页填的这些选项由网关原样透传给 prober（见 driversdk.ProbeParams.Options）。
 	FormJSON json.RawMessage `json:"formJson,omitempty"`

@@ -142,7 +142,7 @@ compatibility range and `APIVersion` bump rules are in
 
 Contributions to this SDK are accepted under **Apache-2.0** with a
 **Developer Certificate of Origin (DCO)** sign-off. No CLA is required.
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [DCO](DCO).
+See [CONTRIBUTING.en.md](CONTRIBUTING.en.md) and [DCO](DCO).
 
 The SDK must never import the AGPL gateway core. CI enforces this with a
 dependency-direction check.
