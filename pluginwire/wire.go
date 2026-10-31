@@ -45,9 +45,14 @@ const (
 
 // 方法名。
 const (
-	MethodDescribe    = "describe"
-	MethodConnect     = "connect"
-	MethodRead        = "read"
+	MethodDescribe = "describe"
+	MethodConnect  = "connect"
+	MethodRead     = "read"
+	// MethodWrite 控制下发（写点位）。
+	//
+	// 与 read 一样**带会话**：写入必须复用正在采集的那条连接（串口独占、
+	// PLC 单连接限制都要求如此）。载荷是冷路径，保持 JSON 编码。
+	MethodWrite       = "write"
 	MethodIsConnected = "isConnected"
 	MethodClose       = "close"
 	MethodPing        = "ping"

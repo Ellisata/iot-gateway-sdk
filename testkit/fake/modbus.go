@@ -162,6 +162,16 @@ func NewModbusTCPWithUnitIDs(units ...byte) (*Server, error) {
 }
 
 func handleModbusConn(conn net.Conn, opts modbusServerOpts) {
+	// 写功能码要更新寄存器/线圈状态，供同一条连接上的后续读回使用。
+	// 未显式提供 map 时补一个，使连接生命周期内写后读可见；需要从测试侧
+	// 检查最终状态时用 WithModbusRegisters/WithModbusBits 传入共享 map。
+	if opts.regs == nil {
+		opts.regs = make(map[uint16]uint16)
+	}
+	if opts.bits == nil {
+		opts.bits = make(map[uint16]bool)
+	}
+
 	hdr := make([]byte, 7)
 	for {
 		if _, err := io.ReadFull(conn, hdr); err != nil {
@@ -240,14 +250,62 @@ func buildModbusResponse(hdr, pdu []byte, opts modbusServerOpts) []byte {
 			binary.BigEndian.PutUint16(data[i*2:], opts.regs[start+uint16(i)])
 		}
 		body = append([]byte{fc, byte(len(data))}, data...)
-	case 5, 6: // 写单线圈 / 写单寄存器：回显请求
+	case 5: // 写单线圈：0xFF00=ON、0x0000=OFF，回显请求
 		if len(pdu) != 5 {
 			return modbusException(hdr, fc, 3)
 		}
+		addr := binary.BigEndian.Uint16(pdu[1:3])
+		val := binary.BigEndian.Uint16(pdu[3:5])
+		if val != 0xFF00 && val != 0x0000 {
+			return modbusException(hdr, fc, 3) // IllegalDataValue
+		}
+		if !opts.withinSpan(addr, 1) {
+			return modbusException(hdr, fc, 2) // IllegalDataAddress
+		}
+		opts.bits[addr] = val == 0xFF00
 		body = pdu
-	case 15, 16: // 写多线圈 / 写多寄存器：返回起始地址 + 数量
+	case 6: // 写单寄存器：回显请求
+		if len(pdu) != 5 {
+			return modbusException(hdr, fc, 3)
+		}
+		addr := binary.BigEndian.Uint16(pdu[1:3])
+		if !opts.withinSpan(addr, 1) {
+			return modbusException(hdr, fc, 2) // IllegalDataAddress
+		}
+		opts.regs[addr] = binary.BigEndian.Uint16(pdu[3:5])
+		body = pdu
+	case 15: // 写多线圈：返回起始地址 + 数量，并更新位图
 		if len(pdu) < 6 {
 			return modbusException(hdr, fc, 3)
+		}
+		addr := binary.BigEndian.Uint16(pdu[1:3])
+		qty := binary.BigEndian.Uint16(pdu[3:5])
+		if !opts.withinSpan(addr, qty) {
+			return modbusException(hdr, fc, 2) // IllegalDataAddress
+		}
+		byteCount := int(pdu[5])
+		if len(pdu) != 6+byteCount || byteCount != (int(qty)+7)/8 {
+			return modbusException(hdr, fc, 3) // IllegalDataValue
+		}
+		for i := 0; i < int(qty); i++ {
+			opts.bits[addr+uint16(i)] = pdu[6+i/8]&(1<<(uint(i)%8)) != 0
+		}
+		body = append([]byte{fc}, pdu[1:5]...)
+	case 16: // 写多寄存器：返回起始地址 + 数量，并更新寄存器
+		if len(pdu) < 6 {
+			return modbusException(hdr, fc, 3)
+		}
+		addr := binary.BigEndian.Uint16(pdu[1:3])
+		qty := binary.BigEndian.Uint16(pdu[3:5])
+		if !opts.withinSpan(addr, qty) {
+			return modbusException(hdr, fc, 2) // IllegalDataAddress
+		}
+		byteCount := int(pdu[5])
+		if len(pdu) != 6+byteCount || byteCount != int(qty)*2 {
+			return modbusException(hdr, fc, 3) // IllegalDataValue
+		}
+		for i := 0; i < int(qty); i++ {
+			opts.regs[addr+uint16(i)] = binary.BigEndian.Uint16(pdu[6+i*2:])
 		}
 		body = append([]byte{fc}, pdu[1:5]...)
 	case 43: // 读设备标识（MEI 0x2B / 子码 0x0E）：仅在显式开启时应答

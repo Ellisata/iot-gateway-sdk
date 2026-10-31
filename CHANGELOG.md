@@ -7,6 +7,45 @@ All notable changes to the iot-gateway SDK are documented here, following
 each release, followed by English entries. The wire protocol has its own
 `APIVersion`; see the compatibility table in README.md.
 
+## [0.3.0] - 2026-10-31
+
+### 新增
+
+- `driver.Writer`：可选的控制下发接口，与 `SerialExclusive` / `ConnectionMatcher`
+  同为**可选接口**，`driver.Driver` 本身不变。`WriteRequest` / `WriteResult` /
+  `WriteCodeXxx` 定义在 `driver/writer.go`。
+- `driversdk.Protocol.Writable`：协议级写能力声明。声明为 true 但工厂未返回
+  `driver.Writer` 时 `Serve` 启动即失败。
+- `pluginwire.MethodWrite` + `driversdk.WriteParams/WriteReply`：写走现有会话，
+  载荷保持 JSON（冷路径）；插件与 Read 共用会话锁。
+- testkit 的假 Modbus 从站现在会更新寄存器/线圈状态，供写后读回用例使用。
+
+### 兼容性
+
+- 线协议 `APIVersion` **保持 4**。新增方法/字段都是增量的：新网关 + 旧插件走
+  `Writable=false` 分支（不开放写），旧网关 + 新插件忽略未知字段且从不调用
+  `MethodWrite`。因此无需重编旧插件。
+
+### Added
+
+- `driver.Writer`: optional control-write interface, in the same style as
+  `SerialExclusive` / `ConnectionMatcher`; `driver.Driver` is unchanged.
+  `WriteRequest` / `WriteResult` / `WriteCodeXxx` live in `driver/writer.go`.
+- `driversdk.Protocol.Writable`: protocol-level write capability. If declared
+  true but the factory does not return a `driver.Writer`, `Serve` fails at startup.
+- `pluginwire.MethodWrite` + `driversdk.WriteParams/WriteReply`: writes reuse the
+  existing session, keep JSON payloads (cold path), and share the plugin session
+  lock with `Read`.
+- The testkit fake Modbus slave now updates register/coil state, enabling
+  write-then-read tests.
+
+### Compatibility
+
+- Wire `APIVersion` **stays 4**. The new method/fields are additive: a new gateway
+  with an old plugin sees `Writable=false` and does not expose writes; an old
+  gateway with a new plugin ignores the unknown field and never calls
+  `MethodWrite`. Old plugin binaries need no rebuild.
+
 ## [0.2.0] - 2026-10-29
 
 ### 新增

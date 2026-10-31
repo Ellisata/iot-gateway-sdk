@@ -271,6 +271,10 @@ type server struct {
 	// 与 probeBudgets 一样在启动期预计算，避免每次请求扫一遍 Meta。
 	serialProtocols map[string]bool
 
+	// writableProtocols 声明了 Writable 的协议。handleWrite 用它拒绝
+	// "网关不认为可写、但驱动恰好实现了 Writer" 的越权调用。
+	writableProtocols map[string]bool
+
 	// wmu 串行化整帧写入，避免多个应答字节交错。
 	wmu sync.Mutex
 
@@ -293,6 +297,22 @@ func serve(r io.Reader, w io.Writer, closer io.Closer, factories Factories, meta
 		if _, ok := factories[p.Name]; !ok {
 			return fmt.Errorf("driversdk: 协议 %q 没有对应的工厂（factories 的键必须与 Meta.Protocols[].Name 一致）", p.Name)
 		}
+	}
+
+	// 声明了 Writable 的协议必须返回实现了 driver.Writer 的实例。
+	// 否则网关会开放写接口，而每次写入都在插件里报"不支持"，运维在前端
+	// 只能看到一句无法定位根因的失败。构造函数只创建不连接（Connect 才开
+	// 资源），这里创建后立即丢弃不会留下句柄。
+	writableProtocols := make(map[string]bool)
+	for _, p := range meta.Protocols {
+		if !p.Writable {
+			continue
+		}
+		drv := factories[p.Name]()
+		if _, ok := drv.(driver.Writer); !ok {
+			return fmt.Errorf("driversdk: 协议 %q 声明了 Writable 但驱动未实现 driver.Writer", p.Name)
+		}
+		writableProtocols[p.Name] = true
 	}
 
 	// 同上：声明了扫描能力的协议必须有 prober。漏配在这里报错，
@@ -345,18 +365,19 @@ func serve(r io.Reader, w io.Writer, closer io.Closer, factories Factories, meta
 	}
 
 	s := &server{
-		r:               r,
-		w:               w,
-		closer:          closer,
-		factories:       factories,
-		probers:         caps.Probers,
-		finders:         caps.PointFinders,
-		meta:            meta,
-		probeBudgets:    probeBudgets,
-		pointBudgets:    pointBudgets,
-		serialProtocols: serialProtocols,
-		sessions:        make(map[uint64]*session),
-		done:            make(chan struct{}),
+		r:                 r,
+		w:                 w,
+		closer:            closer,
+		factories:         factories,
+		probers:           caps.Probers,
+		finders:           caps.PointFinders,
+		meta:              meta,
+		probeBudgets:      probeBudgets,
+		pointBudgets:      pointBudgets,
+		serialProtocols:   serialProtocols,
+		writableProtocols: writableProtocols,
+		sessions:          make(map[uint64]*session),
+		done:              make(chan struct{}),
 	}
 	return s.run()
 }
@@ -626,6 +647,9 @@ func (s *server) handle(f pluginwire.Frame) {
 
 	case pluginwire.MethodRead:
 		s.handleRead(f)
+
+	case pluginwire.MethodWrite:
+		s.handleWrite(f)
 
 	case pluginwire.MethodIsConnected:
 		var p SessionParams
@@ -1097,6 +1121,57 @@ type readOutcome struct {
 	connected bool
 	// closed 拿到锁时会话已经被关闭，没有触碰驱动。
 	closed bool
+}
+
+// handleWrite 处理一次控制下发。
+//
+// 与 Read 共用同一个会话锁：一次写入必须等到在途的 Read 结束、并且不会被
+// 下一轮 Read 插到中间 —— 串口总线上交错两帧的后果是双方都收到错位的应答。
+func (s *server) handleWrite(f pluginwire.Frame) {
+	var p WriteParams
+	if !s.decode(f, &p) {
+		return
+	}
+	sess, ok := s.getSession(p.Session)
+	if !ok {
+		s.reply(f.ID, nil, &pluginwire.RemoteError{Message: fmt.Sprintf("unknown session %d", p.Session)})
+		return
+	}
+	if !s.writableProtocols[sess.protocol] {
+		s.reply(f.ID, nil, &pluginwire.RemoteError{
+			Message: fmt.Sprintf("protocol %q does not declare Writable", sess.protocol),
+		})
+		return
+	}
+
+	out, callErr := sessionCall(sess, func() (writeOutcome, error) {
+		if sess.closed {
+			return writeOutcome{closed: true}, nil
+		}
+		w, ok := sess.drv.(driver.Writer)
+		if !ok {
+			// 启动期已校验过；走到这里说明工厂返回的实例类型与声明不一致
+			// （例如工厂按配置返回了不同实现）。按单次调用失败处理。
+			return writeOutcome{connected: sess.drv.IsConnected()},
+				fmt.Errorf("protocol %q driver does not implement driver.Writer", sess.protocol)
+		}
+		results, err := w.Write(p.Writes)
+		// 与 Read 相同：成功与驱动报错两种情况下都回传连接状态。
+		return writeOutcome{results: results, connected: sess.drv.IsConnected()}, err
+	})
+
+	if out.closed {
+		s.reply(f.ID, nil, &pluginwire.RemoteError{Message: fmt.Sprintf("session %d closed", p.Session)})
+		return
+	}
+	s.reply(f.ID, WriteReply{Results: out.results, Connected: out.connected}, pluginwire.NewRemoteError(callErr))
+}
+
+// writeOutcome Write 这一次调用在会话锁内得到的结果。
+type writeOutcome struct {
+	results   []driver.WriteResult
+	connected bool
+	closed    bool
 }
 
 // decode 解析请求参数；失败时已经应答错误并返回 false。

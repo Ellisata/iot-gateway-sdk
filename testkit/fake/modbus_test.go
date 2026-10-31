@@ -299,3 +299,52 @@ func TestServerCloseStopsServingAcceptedConns(t *testing.T) {
 		_ = conn.Close()
 	}
 }
+
+// TestModbusWriteUpdatesState 验证写功能码不仅回显，还真正更新了同一连接上
+// 后续读能看到的寄存器/线圈状态 —— 控制下发的端到端用例依赖这一点。
+func TestModbusWriteUpdatesState(t *testing.T) {
+	regs := map[uint16]uint16{}
+	bits := map[uint16]bool{}
+	s, err := fake.NewModbusTCPWithOption(
+		fake.WithModbusRegisters(regs),
+		fake.WithModbusBits(bits),
+	)
+	if err != nil {
+		t.Fatalf("启动假从站: %v", err)
+	}
+	defer s.Close()
+	conn := dial(t, s)
+
+	// FC6 写单寄存器 0x1234 到地址 7。
+	body, _ := mbapExchange(t, conn, 1, []byte{6, 0, 7, 0x12, 0x34})
+	if body[0] != 6 || len(body) != 5 {
+		t.Fatalf("FC6 应答 = % X", body)
+	}
+	if got := readRegisters(t, conn, 7, 1); binary.BigEndian.Uint16(got) != 0x1234 {
+		t.Errorf("写后读寄存器 = 0x%04x，期望 0x1234", binary.BigEndian.Uint16(got))
+	}
+
+	// FC5 写单线圈 true 到地址 3。
+	body, _ = mbapExchange(t, conn, 1, []byte{5, 0, 3, 0xFF, 0x00})
+	if body[0] != 5 {
+		t.Fatalf("FC5 应答 = % X", body)
+	}
+	coilBody, _ := mbapExchange(t, conn, 1, []byte{1, 0, 3, 0, 1})
+	if coilBody[0] != 1 || len(coilBody) != 3 || coilBody[2]&0x01 == 0 {
+		t.Errorf("写后读线圈 = % X，期望位 0 为 1", coilBody)
+	}
+
+	// FC16 写两个寄存器到地址 10、11。
+	body, _ = mbapExchange(t, conn, 1, []byte{16, 0, 10, 0, 2, 4, 0, 1, 0, 2})
+	if body[0] != 16 {
+		t.Fatalf("FC16 应答 = % X", body)
+	}
+	got := readRegisters(t, conn, 10, 2)
+	if binary.BigEndian.Uint16(got[0:2]) != 1 || binary.BigEndian.Uint16(got[2:4]) != 2 {
+		t.Errorf("FC16 写后读 = % X，期望 0x0001 0x0002", got)
+	}
+
+	if regs[7] != 0x1234 || regs[10] != 1 || regs[11] != 2 || !bits[3] {
+		t.Errorf("共享状态未更新: regs=%v bits=%v", regs, bits)
+	}
+}

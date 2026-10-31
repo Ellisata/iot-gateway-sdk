@@ -122,6 +122,16 @@ type Protocol struct {
 	// TCP 类协议为 false，串口类为 true。
 	SerialExclusive bool `json:"serialExclusive"`
 
+	// Writable 该协议是否支持控制下发（写点位）。
+	//
+	// true 时该协议的驱动工厂必须返回实现了 driver.Writer 的实例，否则 Serve
+	// 启动即失败。网关只对 Writable 的协议开放写接口；点位的 rw_permission
+	// 仍由网关侧逐点校验（W/RW 才可写）。
+	//
+	// 这是**可选能力标记**：新网关 + 旧插件走 false 分支（不开放写），
+	// 旧网关 + 新插件忽略这个未知字段。因此它不递增 APIVersion。
+	Writable bool `json:"writable,omitempty"`
+
 	// Description 该协议的说明，写入 iot_protocol.description；
 	// 留空时回退到 Meta.Description。
 	Description string `json:"description,omitempty"`

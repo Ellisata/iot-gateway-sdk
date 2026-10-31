@@ -60,6 +60,26 @@ type ReadReply struct {
 	Connected bool                `json:"connected"`
 }
 
+// WriteParams write 请求参数。
+//
+// 与 read 的 WireAddr 不同，这里直接复用 driver.WriteRequest：写是冷路径
+// （一次控制下发几个点），没有省字段的必要，且请求/应答的结构在 SDK 里
+// 只有一份，避免两套定义漂移。载荷保持 JSON 编码（见 pluginwire.MethodWrite）。
+type WriteParams struct {
+	Session uint64                `json:"session"`
+	Writes  []driver.WriteRequest `json:"writes"`
+}
+
+// WriteReply write 应答。
+//
+// Connected 与 ReadReply 同义：**成功与驱动报错两种情况下都必须填**。
+// 写入遇到链路错误时驱动返回 error 且 IsConnected()==false，网关据此在
+// 下一轮轮询触发重连。
+type WriteReply struct {
+	Results   []driver.WriteResult `json:"results"`
+	Connected bool                 `json:"connected"`
+}
+
 // SessionParams 只需 session 的方法（isConnected / close）的参数。
 type SessionParams struct {
 	Session uint64 `json:"session"`
