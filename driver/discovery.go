@@ -38,6 +38,34 @@ const (
 	TargetModeBoth TargetMode = "both"
 )
 
+// ProbeTransport 单播探测使用的传输层。
+//
+// 网关据此决定能不能在 probe 之前做一次廉价的 TCP 可达性预筛：一个网段里
+// 绝大多数地址不可达，逐个走插件探测要等满单目标预算；先用短超时的 TCP
+// 连接筛掉它们，可以把大网段的扫描时间从小时级压到分钟级。
+//
+// 只有插件知道自己的 probe 走 TCP 还是 UDP，所以这件事必须由插件声明 ——
+// 网关侧硬编码协议名白名单会与插件能力分叉，协议热升级/新增后悄悄失效。
+type ProbeTransport string
+
+const (
+	// ProbeTransportUnknown 未声明。网关不做任何传输层假设，也就不会预筛。
+	//
+	// 旧插件不带本字段时就是这个值；广播与单播走不同传输的协议也应留空。
+	ProbeTransportUnknown ProbeTransport = ""
+
+	// ProbeTransportTCP 单播探测走 TCP：拨号成功是 probe 能成功的必要条件，
+	// 网关可以对非广播目标先做一次 TCP connect 预筛。
+	//
+	// 这是**承诺**而不是提示：声明错了（实际探的是 UDP），网关会把所有
+	// 单播目标在预筛阶段判死，表现为"扫描飞快结束、0 设备、0 错误"。
+	ProbeTransportTCP ProbeTransport = "tcp"
+
+	// ProbeTransportUDP 单播探测走 UDP：不存在可用的 TCP 拨号前置条件，
+	// 网关不得做 TCP 预筛（否则会误杀真实设备）。
+	ProbeTransportUDP ProbeTransport = "udp"
+)
+
 // DiscoverySpec 插件为某个协议声明的「局域网扫描发现」能力。
 //
 // 在 driversdk.Meta 的 Protocol 里以指针出现：**nil 表示该协议不支持扫描**。
@@ -71,6 +99,13 @@ type DiscoverySpec struct {
 
 	// TargetMode 目标类型，见 TargetMode。留空按 unicast 处理。
 	TargetMode TargetMode `json:"targetMode,omitempty"`
+
+	// Transport 单播探测使用的传输层，见 ProbeTransport。留空表示不声明、
+	// 网关不做预筛。
+	//
+	// 与 DiscoverySpec 其余可选字段一样，本字段的引入**不递增 APIVersion**：
+	// 旧网关忽略未知字段，旧插件零值走 ProbeTransportUnknown。
+	Transport ProbeTransport `json:"transport,omitempty"`
 
 	// MaxBudgetMs 插件自报的**单目标硬预算**（毫秒）。
 	//

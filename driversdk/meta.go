@@ -399,6 +399,14 @@ func validateDiscovery(p Protocol) error {
 		return fmt.Errorf("driversdk: 协议 %q 的 Discovery.TargetMode = %q，只接受 unicast / broadcast / both",
 			p.Name, d.TargetMode)
 	}
+	// 未知值必须挡在启动期：它决定网关能否做 TCP 预筛，静默忽略会让一个
+	// 拼错的声明看起来"配了却没效果"。
+	switch d.Transport {
+	case driver.ProbeTransportUnknown, driver.ProbeTransportTCP, driver.ProbeTransportUDP:
+	default:
+		return fmt.Errorf("driversdk: 协议 %q 的 Discovery.Transport = %q，只接受空串 / tcp / udp",
+			p.Name, d.Transport)
+	}
 	if d.MaxBudgetMs < discoveryBudgetFloor || d.MaxBudgetMs > discoveryBudgetCeiling {
 		return fmt.Errorf("driversdk: 协议 %q 的 Discovery.MaxBudgetMs = %d，应在 [%d,%d]（毫秒）—— "+
 			"它同时决定网关侧的 probe RPC 超时，因此不能任意取值",

@@ -89,6 +89,10 @@ func TestMetaValidateDiscovery(t *testing.T) {
 		{"端口为 0", func(m *driversdk.Meta) { m.Protocols[0].Discovery.DefaultPort = 0 }, "DefaultPort"},
 		{"端口越界", func(m *driversdk.Meta) { m.Protocols[0].Discovery.DefaultPort = 70000 }, "DefaultPort"},
 		{"TargetMode 非法", func(m *driversdk.Meta) { m.Protocols[0].Discovery.TargetMode = "multicast" }, "TargetMode"},
+		// Transport 决定网关能否做 TCP 预筛。拼错的声明若被静默接受，
+		// 表现就是"配了却没效果"或"扫描飞快结束、0 设备"。
+		{"Transport 非法", func(m *driversdk.Meta) { m.Protocols[0].Discovery.Transport = "sctp" }, "Transport"},
+		{"Transport 大小写不匹配", func(m *driversdk.Meta) { m.Protocols[0].Discovery.Transport = "TCP" }, "Transport"},
 		{"预算过低", func(m *driversdk.Meta) { m.Protocols[0].Discovery.MaxBudgetMs = 10 }, "MaxBudgetMs"},
 		{"预算过高", func(m *driversdk.Meta) { m.Protocols[0].Discovery.MaxBudgetMs = 600000 }, "MaxBudgetMs"},
 		{"表单不是合法 JSON", func(m *driversdk.Meta) {
@@ -112,6 +116,36 @@ func TestMetaValidateDiscovery(t *testing.T) {
 				t.Fatalf("错误信息 %q 未包含 %q", err.Error(), c.wantSub)
 			}
 		})
+	}
+}
+
+// TestMetaValidateAcceptsProbeTransports 空串（未声明）与 tcp / udp 都必须合法。
+// 空串尤其重要：全部旧插件都不带这个字段，拒绝它等于让旧插件在升级后加载失败。
+func TestMetaValidateAcceptsProbeTransports(t *testing.T) {
+	for _, tr := range []driver.ProbeTransport{
+		driver.ProbeTransportUnknown,
+		driver.ProbeTransportTCP,
+		driver.ProbeTransportUDP,
+	} {
+		m := driversdk.Meta{
+			APIVersion: driversdk.APIVersion,
+			Protocols: []driversdk.Protocol{{
+				Name: "Test.Plugin.Transport",
+				Discovery: &driver.DiscoverySpec{
+					Title:       "扫描",
+					DefaultPort: 502,
+					TargetMode:  driver.TargetModeUnicast,
+					Transport:   tr,
+					MaxBudgetMs: 6000,
+				},
+			}},
+			Scope:   "testplugintransport",
+			Types:   []*driver.DataType{{Name: "bool", Kind: driver.KindBool, Size: 1}},
+			TypeMap: map[string]string{"Boolean": "bool"},
+		}
+		if err := m.Validate(); err != nil {
+			t.Errorf("Transport = %q 应合法: %v", tr, err)
+		}
 	}
 }
 

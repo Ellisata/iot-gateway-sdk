@@ -7,6 +7,37 @@ All notable changes to the iot-gateway SDK are documented here, following
 each release, followed by English entries. The wire protocol has its own
 `APIVersion`; see the compatibility table in README.md.
 
+## [0.4.0] - 2026-11-05
+
+### 新增
+
+- `driver.ProbeTransport` 与 `driver.DiscoverySpec.Transport`：插件在 describe
+  时声明单播 probe 使用 `tcp` / `udp` / 未声明。网关据此决定能否在 probe 之前
+  做一次短超时的 TCP 可达性预筛（大网段扫描的主要加速手段）；广播目标永远绕过。
+- `driversdk.Meta.Validate` 拒绝 `Transport` 的未知取值（只接受空串 / `tcp` / `udp`），
+  把拼错的声明挡在插件启动期。
+
+### 兼容性
+
+- 线协议 `APIVersion` **保持 4**。新字段是可选且 `omitempty`：旧网关忽略未知字段，
+  旧插件不带该字段时为零值（不做预筛）。旧插件二进制无需重编。
+
+### Added
+
+- `driver.ProbeTransport` and `driver.DiscoverySpec.Transport`: plugins declare
+  whether their unicast probe uses `tcp`, `udp`, or leaves it unspecified. The
+  gateway uses it to decide whether a short-timeout TCP reachability prefilter
+  can run before the probe (the main speed lever for large-subnet scans);
+  broadcast targets always bypass it.
+- `driversdk.Meta.Validate` rejects unknown `Transport` values (only empty /
+  `tcp` / `udp`), catching typos at plugin startup.
+
+### Compatibility
+
+- Wire `APIVersion` **stays 4**. The field is optional and `omitempty`: an old
+  gateway ignores it, and an old plugin's zero value disables the prefilter.
+  Old plugin binaries need no rebuild.
+
 ## [0.3.0] - 2026-10-31
 
 ### 新增
