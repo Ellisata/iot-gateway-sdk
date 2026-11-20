@@ -3,7 +3,12 @@
 
 package driver
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
 
 // TestExtractSerialPort 串口名的提取规则。
 //
@@ -41,6 +46,45 @@ func TestExtractSerialPort(t *testing.T) {
 				t.Errorf("ExtractSerialPort(%q) = %q, want %q", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+// TestCanonicalSerialPort 端口归一的规则。
+//
+// 网关与插件都靠它判断"是不是同一个口"：这里少归一种写法，就会出现
+// "网关认为同总线、插件开了两个句柄"的静默故障。
+func TestCanonicalSerialPort(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		cases := map[string]string{
+			" COM3 ":   "COM3",
+			"com3":     "COM3",
+			`\\.\COM3`: "COM3",
+		}
+		for in, want := range cases {
+			if got := CanonicalSerialPort(in); got != want {
+				t.Errorf("CanonicalSerialPort(%q) = %q, want %q", in, got, want)
+			}
+		}
+	} else {
+		dir := t.TempDir()
+		target := filepath.Join(dir, "ttyUSB0")
+		if err := os.WriteFile(target, nil, 0o600); err != nil {
+			t.Fatalf("创建端口文件失败: %v", err)
+		}
+		link := filepath.Join(dir, "serial-by-id")
+		if err := os.Symlink(target, link); err != nil {
+			t.Skipf("当前环境不支持创建软链: %v", err)
+		}
+		if got := CanonicalSerialPort(link); got != CanonicalSerialPort(target) {
+			t.Errorf("软链 %s 归一为 %q，与实际设备 %q 不一致", link, got, target)
+		}
+		if got := CanonicalSerialPort("  /dev/does-not-exist  "); got != "/dev/does-not-exist" {
+			t.Errorf("不存在的端口应退回原串（裁掉空白），got %q", got)
+		}
+	}
+
+	if got := CanonicalSerialPort(""); got != "" {
+		t.Errorf("空端口应返回空串，got %q", got)
 	}
 }
 

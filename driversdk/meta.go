@@ -122,6 +122,18 @@ type Protocol struct {
 	// TCP 类协议为 false，串口类为 true。
 	SerialExclusive bool `json:"serialExclusive"`
 
+	// SerialProxy 该协议是否支持"网关代理串口"。
+	//
+	// 两个**不同插件进程**配到同一个物理串口时（例如 DLT645.Serial 与 Modbus.RTU），
+	// 各自开一个 fd 会瓜分应答字节、互相打断 termios；正确的终局是网关主进程
+	// 持有唯一句柄，插件经 serial.* RPC 收发字节。声明 true 时，驱动的工厂必须
+	// 返回实现了 driver.SerialTransportProvider 的实例，否则 Serve 启动即失败。
+	//
+	// 这是**可选能力标记**：旧网关从不打开代理（也不会发 serialProxy 标志），
+	// 旧插件不声明它；新网关只在同端口的全部协议都声明时才启用代理，否则保持
+	// 直连并告警。因此它不递增 APIVersion。
+	SerialProxy bool `json:"serialProxy,omitempty"`
+
 	// Writable 该协议是否支持控制下发（写点位）。
 	//
 	// true 时该协议的驱动工厂必须返回实现了 driver.Writer 的实例，否则 Serve

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Ellisata/iot-gateway-sdk/driver"
+	"github.com/Ellisata/iot-gateway-sdk/driversdk/serialproxy"
 	"github.com/Ellisata/iot-gateway-sdk/pluginwire"
 )
 
@@ -275,8 +276,17 @@ type server struct {
 	// "网关不认为可写、但驱动恰好实现了 Writer" 的越权调用。
 	writableProtocols map[string]bool
 
-	// wmu 串行化整帧写入，避免多个应答字节交错。
+	// wmu 串行化整帧写入，避免多个应答字节交错。**正向应答与反向请求共用它**：
+	// 串口代理的 serial.* 请求由插件发出，与网关请求的应答走同一条管道。
 	wmu sync.Mutex
+
+	// hostPending 在途的「插件 → 网关」反向调用（串口代理）。
+	//
+	// 与正向请求的 pending 分属两个 ID 空间：信封靠"有没有 Method"区分请求与
+	// 应答（见 pluginwire.Frame），同一数字在两方向同时使用不会错配。
+	hostMu      sync.Mutex
+	hostPending map[uint64]chan pluginwire.Frame
+	hostNextID  atomic.Uint64
 
 	mu       sync.Mutex
 	sessions map[uint64]*session
@@ -313,6 +323,19 @@ func serve(r io.Reader, w io.Writer, closer io.Closer, factories Factories, meta
 			return fmt.Errorf("driversdk: 协议 %q 声明了 Writable 但驱动未实现 driver.Writer", p.Name)
 		}
 		writableProtocols[p.Name] = true
+	}
+
+	// 声明了串口代理的协议必须返回实现了 driver.SerialTransportProvider 的实例：
+	// 否则网关会按"可代理"把它与另一协议排到同一端口上，而插件自己又去开一个
+	// fd —— 正好复现代理要消除的那三个坑，且没有任何报错。
+	for _, p := range meta.Protocols {
+		if !p.SerialProxy {
+			continue
+		}
+		drv := factories[p.Name]()
+		if _, ok := drv.(driver.SerialTransportProvider); !ok {
+			return fmt.Errorf("driversdk: 协议 %q 声明了 SerialProxy 但驱动未实现 driver.SerialTransportProvider", p.Name)
+		}
 	}
 
 	// 同上：声明了扫描能力的协议必须有 prober。漏配在这里报错，
@@ -376,6 +399,7 @@ func serve(r io.Reader, w io.Writer, closer io.Closer, factories Factories, meta
 		pointBudgets:      pointBudgets,
 		serialProtocols:   serialProtocols,
 		writableProtocols: writableProtocols,
+		hostPending:       make(map[uint64]chan pluginwire.Frame),
 		sessions:          make(map[uint64]*session),
 		done:              make(chan struct{}),
 	}
@@ -393,6 +417,12 @@ func (s *server) run() error {
 			if err != nil {
 				readErr <- err
 				return
+			}
+			// 不带 Method 的帧是本插件发起的反向调用（serial.*）的应答，
+			// 直接交给等待者；它绝不能进 handle —— 那里会答一句 unknown method。
+			if f.Method == "" {
+				s.deliverHostReply(f)
+				continue
 			}
 			select {
 			case frames <- f:
@@ -729,6 +759,13 @@ func (s *server) handle(f pluginwire.Frame) {
 			s.reply(f.ID, nil, pluginwire.NewRemoteError(err))
 			return
 		}
+		if p.SerialProxy {
+			if err := s.attachSerialTransport(drv); err != nil {
+				_ = drv.Close()
+				s.reply(f.ID, nil, pluginwire.NewRemoteError(err))
+				return
+			}
+		}
 		pingErr := func() error {
 			defer func() { _ = drv.Close() }()
 			return drv.Ping(p.ProtocolJSON)
@@ -912,6 +949,13 @@ func (s *server) handleDiscoverPoints(f pluginwire.Frame) {
 		s.reply(f.ID, driver.PointScanResult{}, pluginwire.NewRemoteError(err))
 		return
 	}
+	if p.SerialProxy {
+		if err := s.attachSerialTransport(drv); err != nil {
+			_ = drv.Close()
+			s.reply(f.ID, driver.PointScanResult{}, pluginwire.NewRemoteError(err))
+			return
+		}
+	}
 	result, ferr := func() (*driver.PointScanResult, error) {
 		defer func() { _ = drv.Close() }()
 		if err := drv.Connect(p.ProtocolJSON); err != nil {
@@ -1050,6 +1094,13 @@ func (s *server) handleConnect(f pluginwire.Frame) {
 	if err != nil {
 		s.reply(f.ID, ConnectResult{}, pluginwire.NewRemoteError(err))
 		return
+	}
+	if p.SerialProxy {
+		if err := s.attachSerialTransport(drv); err != nil {
+			_ = drv.Close()
+			s.reply(f.ID, ConnectResult{Connected: false}, pluginwire.NewRemoteError(err))
+			return
+		}
 	}
 	if err := drv.Connect(p.ProtocolJSON); err != nil {
 		// 连接失败不留会话，避免半初始化实例堆积。
@@ -1202,7 +1253,103 @@ func (s *server) reply(id uint64, result any, rerr *pluginwire.RemoteError) {
 		rerr = &pluginwire.RemoteError{Message: "marshal result: " + err.Error()}
 	}
 
+	_ = s.writeFrame(pluginwire.Frame{ID: id, Codec: codec, Result: body, Error: rerr})
+}
+
+// writeFrame 串行化整帧写入。正向应答与反向请求共用 s.wmu。
+func (s *server) writeFrame(f pluginwire.Frame) error {
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
-	_ = pluginwire.WriteFrame(s.w, pluginwire.Frame{ID: id, Codec: codec, Result: body, Error: rerr})
+	if s.closed.Load() {
+		return errors.New("driversdk: server is shutting down")
+	}
+	return pluginwire.WriteFrame(s.w, f)
+}
+
+// Call 发起一次「插件 → 网关」的反向 RPC（当前唯一用途是串口代理）。
+//
+// 它实现 serialproxy.Caller。没有 ctx：调用方的等待上限由具体协议决定（串口读
+// 的 Timeout 在请求参数里），而宿主下线时底层管道关闭、s.done 触发，等待者
+// 立即返回 —— 不会挂在一个不可能到达的应答上。
+//
+// 反向 ID 与网关请求的 ID 是两个独立空间，互不干扰（信封靠 Method 区分方向）。
+func (s *server) Call(method string, params, result any) error {
+	body, codec, err := pluginwire.EncodeBody(params)
+	if err != nil {
+		return fmt.Errorf("driversdk: encode %s params: %w", method, err)
+	}
+
+	id := s.hostNextID.Add(1)
+	ch := make(chan pluginwire.Frame, 1)
+
+	s.hostMu.Lock()
+	select {
+	case <-s.done:
+		s.hostMu.Unlock()
+		return errors.New("driversdk: gateway connection is closed")
+	default:
+	}
+	s.hostPending[id] = ch
+	s.hostMu.Unlock()
+
+	if err := s.writeFrame(pluginwire.Frame{ID: id, Method: method, Codec: codec, Params: body}); err != nil {
+		s.dropHostCall(id)
+		return err
+	}
+
+	select {
+	case resp := <-ch:
+		if resp.Error != nil {
+			return resp.Error
+		}
+		if len(resp.Result) > 0 && result != nil {
+			if err := pluginwire.DecodeBody(resp.Codec, resp.Result, result); err != nil {
+				return fmt.Errorf("driversdk: decode %s result: %w", method, err)
+			}
+		}
+		return nil
+	case <-s.done:
+		s.dropHostCall(id)
+		return errors.New("driversdk: gateway connection is closed")
+	}
+}
+
+// deliverHostReply 把网关对反向调用的应答交给等待者。
+//
+// 与正向 dispatch 一样**绝不阻塞读协程**：通道缓冲为 1，调用方已放弃时
+// 这里也能立即返回；未知 id（调用方放弃后迟到的应答）静默丢弃。
+func (s *server) deliverHostReply(f pluginwire.Frame) {
+	if f.ID == 0 {
+		return
+	}
+	s.hostMu.Lock()
+	ch, ok := s.hostPending[f.ID]
+	if ok {
+		delete(s.hostPending, f.ID)
+	}
+	s.hostMu.Unlock()
+	if ok {
+		ch <- f
+	}
+}
+
+func (s *server) dropHostCall(id uint64) {
+	s.hostMu.Lock()
+	delete(s.hostPending, id)
+	s.hostMu.Unlock()
+}
+
+// attachSerialTransport 在代理模式下把字节流来源注入驱动。
+//
+// 驱动必须实现 driver.SerialTransportProvider（Startup 时已按 Meta 声明校验过，
+// 但工厂可能按配置返回不同实现，所以这里再判一次并给出可定位的错误）。
+func (s *server) attachSerialTransport(drv driver.Driver) error {
+	p, ok := drv.(driver.SerialTransportProvider)
+	if !ok {
+		return fmt.Errorf("driversdk: 协议声明了 SerialProxy 但驱动未实现 driver.SerialTransportProvider")
+	}
+	p.SetSerialTransport(func(opts driver.SerialOpenOptions) (io.ReadWriteCloser, error) {
+		return serialproxy.Open(s, opts)
+	})
+	return nil
 }

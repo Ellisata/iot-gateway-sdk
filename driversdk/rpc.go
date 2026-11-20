@@ -20,6 +20,11 @@ type ConnectParams struct {
 	Protocol string `json:"protocol"`
 
 	ProtocolJSON string `json:"protocolJson"`
+
+	// SerialProxy 由网关置位：本次会话的串口必须经宿主代理（serial.* RPC），
+	// 不得在本进程内打开端口。只有「同端口上全部协议都声明了 SerialProxy」
+	// 时网关才会置位；旧网关从不置位，插件保持直连（见 Meta.Protocols）。
+	SerialProxy bool `json:"serialProxy,omitempty"`
 }
 
 // ConnectResult connect 应答。
@@ -101,6 +106,10 @@ type PingParams struct {
 	Protocol string `json:"protocol"`
 
 	ProtocolJSON string `json:"protocolJson"`
+
+	// SerialProxy 同 ConnectParams.SerialProxy：网关侧的这条临时实例/复用的
+	// 会话是否走宿主代理。复用命中时以既有会话的配置为准。
+	SerialProxy bool `json:"serialProxy,omitempty"`
 }
 
 // CloseReply 关闭会话的应答，含关闭后的连接状态。
@@ -180,6 +189,10 @@ type DiscoverPointsParams struct {
 	// ProtocolJSON 该设备的连接配置。**由网关从 device 行读取后透传**，
 	// 不接受客户端的值 —— 它决定网关去连哪台设备。
 	ProtocolJSON string `json:"protocolJson"`
+
+	// SerialProxy 同 ConnectParams.SerialProxy：临时实例也必须走宿主代理，
+	// 否则会与采集会话抢同一个物理口的第二个 fd。
+	SerialProxy bool `json:"serialProxy,omitempty"`
 
 	// Options 扫描选项，形状由该协议 PointDiscoverySpec.FormJSON 定义，原样透给 finder。
 	// 用 string 而非 json.RawMessage 的理由同 ProbeParams.Options。

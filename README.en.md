@@ -30,6 +30,8 @@ does not link or import AGPL code.
 | `driver` | Driver interface, data types, quality codes, type registry, discovery/point-scan contracts |
 | `pluginwire` | Length-prefixed frame codec used between the gateway and a plugin process |
 | `driversdk` | `Main`/`Serve`, plugin metadata, RPC parameter types, logging |
+| `driversdk/serialbus` | Process-wide serial handle sharing: all sessions on one physical port share a handle and one bus lock (ref counting, parameter conflicts, dead-handle replacement). Serial drivers should use it |
+| `driversdk/serialproxy` | Plugin side of gateway-proxied serial I/O: when different plugin processes share one physical port, bytes flow over `serial.*` RPC and Lock/Unlock forward to the gateway's cross-process bus lock |
 | `testkit` | Fake PLC servers for driver tests. **Nested module** in this repository (`testkit/go.mod`) — the only part that pulls third-party dependencies. |
 
 ## Test kit

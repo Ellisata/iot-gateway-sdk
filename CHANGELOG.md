@@ -7,6 +7,76 @@ All notable changes to the iot-gateway SDK are documented here, following
 each release, followed by English entries. The wire protocol has its own
 `APIVersion`; see the compatibility table in README.md.
 
+## [0.5.0] - 2026-11-20
+
+### 新增
+
+- `driver.CanonicalSerialPort`：串口名归一的唯一实现 —— 两端空白、Windows 的
+  大小写与 `\\.\` 前缀、Linux `/dev/serial/by-id/...` 软链。网关按归一后的端口名
+  归并总线锁，插件按归一后的端口名共享句柄；两边必须用同一个函数，否则会出现
+  "网关认为同总线、插件却开了两个句柄"的静默故障。
+- `driversdk/serialbus`：进程级串口句柄共享注册表。同一物理端口、相同串口参数的
+  多个会话 `Acquire` 到同一个 `Handle`，它的 `Lock` 就是总线锁，最后一个
+  `Release` 才真正关闭端口；参数不同明确报配置错误；句柄判死后下一次 `Acquire`
+  自动换新。资源类型由调用方用类型参数给出（裸串口用 `io.ReadWriteCloser`，
+  协议陪跑对象用自己的类型），包本身只依赖标准库与 `driver`。
+
+- `driversdk/serialproxy` 与反向 RPC：两个**不同插件进程**配到同一个物理口时，
+  由网关主进程持有唯一句柄，插件经 `pluginwire.MethodSerial*`（serial.open /
+  lock / read / write / unlock / close）收发字节。`serialproxy.Conn` 把它们包装成
+  `io.ReadWriteCloser`，并转发 Lock/Unlock 到网关的跨进程总线锁。
+- `driver.SerialOpenOptions` / `driver.SerialTransportProvider`：串口驱动通过这个
+  **可选接口**接收 SDK 注入的字节流 opener（nil = 直接打开本机串口）。
+- `driversdk.Protocol.SerialProxy` 能力声明；`ConnectParams` / `PingParams` /
+  `DiscoverPointsParams` 新增 `serialProxy` 标志。`serialbus.Handle` 现在会把
+  资源上的 Lock/Unlock 串进总线锁（代理流借此获得跨进程互斥）。
+
+### 兼容性
+
+- 线协议 `APIVersion` **保持 4**。代理能力通过 `serialProxy` 标志协商：旧网关
+  从不置位，旧插件不声明 `SerialProxy`，双方都走原来的直连路径；`serial.*`
+  反向方法只在网关主动启用代理时才会出现。需要多个会话共用同一串口的插件应当
+  迁移到 `serialbus`，否则仍会复现"应答字节被瓜分 / EAGAIN / 交替重连"。
+
+### Added
+
+- `driver.CanonicalSerialPort`: the single implementation of serial port name
+  canonicalization — surrounding whitespace, Windows case and the `\\.\` prefix,
+  Linux `/dev/serial/by-id/...` symlinks. The gateway groups devices into one bus
+  lock by the canonical name and plugins share handles by it; both sides must use
+  the same function, or you get a silent "gateway thinks one bus, plugin opens two
+  handles" split.
+- `driversdk/serialbus`: a process-wide registry that shares one serial handle
+  across all sessions on the same physical port with the same line parameters.
+  `Handle.Lock` is the bus lock, the port is closed only on the last `Release`, a
+  parameter mismatch is an explicit configuration error, and a dead handle is
+  replaced by the next `Acquire`. The resource type is a type parameter (raw ports
+  use `io.ReadWriteCloser`, protocol handlers use their own type); the package
+  depends only on the standard library and `driver`.
+
+- `driversdk/serialproxy` and reverse RPC: when two **different plugin processes**
+  share one physical port, the gateway process owns the only handle and plugins
+  exchange bytes over `pluginwire.MethodSerial*` (`serial.open` / `lock` / `read`
+  / `write` / `unlock` / `close`). `serialproxy.Conn` wraps them as an
+  `io.ReadWriteCloser` and forwards Lock/Unlock to the gateway's cross-process bus
+  lock.
+- `driver.SerialOpenOptions` / `driver.SerialTransportProvider`: serial drivers
+  receive an injected byte-stream opener through this **optional interface**
+  (nil = open the local port directly).
+- `driversdk.Protocol.SerialProxy` capability declaration; `ConnectParams`,
+  `PingParams` and `DiscoverPointsParams` gain a `serialProxy` flag.
+  `serialbus.Handle` now composes a resource's Lock/Unlock into its bus lock,
+  which is how proxied streams share cross-process mutual exclusion.
+
+### Compatibility
+
+- Wire `APIVersion` **stays 4**. Proxying is negotiated by the `serialProxy`
+  flag: old gateways never set it and old plugins never declare `SerialProxy`,
+  so both keep the direct path; the `serial.*` reverse methods only appear when
+  the gateway deliberately enables proxying. Plugins that put several sessions on
+  one serial port should migrate to `serialbus`, otherwise they still hit split
+  answer bytes, `EAGAIN`, and alternating reconnects.
+
 ## [0.4.0] - 2026-11-05
 
 ### 新增

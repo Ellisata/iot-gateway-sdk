@@ -66,6 +66,18 @@ const (
 	// 串口独占的场景下这是唯一可行的路径。
 	MethodDiscoverPoints = "discoverPoints"
 	MethodShutdown       = "shutdown"
+
+	// —— 串口代理：插件 → 网关的反向请求 ——
+	//
+	// 两个插件进程配到同一个物理串口时，同一时刻只能存在一个 fd；由网关主进程
+	// 持有它，插件经这几个方法收发字节。请求帧同样带 Method，应答帧不带 ——
+	// 方向由"谁发起"决定，与网关 → 插件的调用共用一个信封。
+	MethodSerialOpen   = "serial.open"
+	MethodSerialClose  = "serial.close"
+	MethodSerialLock   = "serial.lock"
+	MethodSerialUnlock = "serial.unlock"
+	MethodSerialWrite  = "serial.write"
+	MethodSerialRead   = "serial.read"
 )
 
 // ErrFrameDesync 帧流已损坏（通常是插件往 stdout 写了非帧数据）。
@@ -95,6 +107,11 @@ func NewRemoteError(err error) *RemoteError {
 //
 // 请求：ID>0 + Method + Params
 // 应答：ID 相同 + (Result 或 Error)
+//
+// 信封是**双向**的：网关可以请求插件（connect/read/...），插件也可以请求网关
+//（串口代理的 serial.*）。两者靠"有没有 Method"区分请求与应答，因此两侧各自
+// 的 ID 空间互不干扰 —— 一个方向上的请求 ID 恰好等于另一方向上在途请求的 ID，
+// 不会造成错配。
 //
 // 注意 Result 与 Error 可同时存在：read 在驱动报错时既要回传 error，
 // 也要回传驱动当前的 connected 状态（这是网关感知链路掉线的唯一通道）。
