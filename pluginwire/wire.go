@@ -109,7 +109,7 @@ func NewRemoteError(err error) *RemoteError {
 // 应答：ID 相同 + (Result 或 Error)
 //
 // 信封是**双向**的：网关可以请求插件（connect/read/...），插件也可以请求网关
-//（串口代理的 serial.*）。两者靠"有没有 Method"区分请求与应答，因此两侧各自
+// （串口代理的 serial.*）。两者靠"有没有 Method"区分请求与应答，因此两侧各自
 // 的 ID 空间互不干扰 —— 一个方向上的请求 ID 恰好等于另一方向上在途请求的 ID，
 // 不会造成错配。
 //

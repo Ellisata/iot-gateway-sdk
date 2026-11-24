@@ -1,0 +1,25 @@
+# 统一行尾规范：Windows 的系统级 core.autocrlf=true 会把文件检出成 CRLF，
+# 导致本地 gofmt -l 把所有 .go 文件都报成未格式化（CI 在 Linux 上是 LF，因此不报）
+* text=auto
+
+# Go 源码与模块文件必须 LF
+*.go text eol=lf
+*.mod text eol=lf
+*.sum text eol=lf
+
+# Windows 批处理必须 CRLF（cmd.exe 无法解析 LF-only 的脚本）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制文件不做任何转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.exe binary
+*.zip binary
+*.gz binary
