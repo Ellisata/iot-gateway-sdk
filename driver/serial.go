@@ -50,8 +50,9 @@ const SerialOpenFailureHint = "（串口打开失败：请核对端口名是否�
 // 规则：
 //   - 两端空白与空串：裁掉空白，空串原样返回空串；
 //   - Windows：`\\.\COM3` 去掉前缀，名字统一大写（串口名大小写不敏感）；
-//   - Linux：`/dev/` 下的路径解析软链（`/dev/serial/by-id/...` 与 `/dev/ttyUSB0`
-//     是同一个口）。
+//   - Linux/macOS：绝对路径解析软链（`/dev/serial/by-id/...` 与 `/dev/ttyUSB0`
+//     是同一个口）。相对路径不解析：同一个名字会在网关与插件各自的 cwd 下
+//     展开成不同路径，解析后反而会把同一个口归一成两个名字。
 //
 // 归一失败（路径不存在、无权限）时退回原串：不能因为规范化失败把设备当成
 // 没有端口，真正的打开错误由驱动在打开分支里报。
@@ -64,7 +65,7 @@ func CanonicalSerialPort(port string) string {
 		p = strings.TrimPrefix(p, `\\.\`)
 		return strings.ToUpper(p)
 	}
-	if strings.HasPrefix(p, "/dev/") {
+	if filepath.IsAbs(p) {
 		if resolved, err := filepath.EvalSymlinks(p); err == nil {
 			return resolved
 		}

@@ -81,6 +81,13 @@ func TestCanonicalSerialPort(t *testing.T) {
 		if got := CanonicalSerialPort("  /dev/does-not-exist  "); got != "/dev/does-not-exist" {
 			t.Errorf("不存在的端口应退回原串（裁掉空白），got %q", got)
 		}
+
+		// 相对路径不解析：网关与插件进程的 cwd 不同，各自展开会把同一个口
+		// 归一成两个名字。软链在当前目录下真实存在，仍应原样返回。
+		t.Chdir(dir)
+		if got := CanonicalSerialPort("serial-by-id"); got != "serial-by-id" {
+			t.Errorf("相对路径不应解析软链，got %q", got)
+		}
 	}
 
 	if got := CanonicalSerialPort(""); got != "" {
