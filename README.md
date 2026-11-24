@@ -104,9 +104,11 @@ go build -o plugins/iot-driver-hello .
 
 | SDK | 线协议 `APIVersion` | 可加载的网关 |
 |---|---|---|
-| v0.1.x / v0.2.x | 4 | 任何接受 `APIVersion == 4` 的网关（当前为 v0.2.0 及以后） |
+| v0.1.x / v0.2.x | 4 | 任何接受 `APIVersion == 4` 的网关 |
+| v0.3.x – v0.5.x | 4 | 同上 |
+| v0.6.x | 5 | 任何接受 `APIVersion == 5` 的网关 |
 
-线协议独立于 SDK 的 semver 进行版本管理。基于 SDK v0.1.x / v0.2.x 构建的驱动，兼容任何接受 `APIVersion == 4` 的网关。不匹配会在握手阶段被拒绝，绝不会被静默误解析。
+线协议独立于 SDK 的 semver 进行版本管理，决定插件能否加载的只有 `APIVersion`：SDK v0.6.0 起线协议进位到 5（read 入参新增点位级布局字段），基于 0.6.x 构建的插件**不能**加载到只接受 4 的网关上，反之亦然。不匹配会在握手阶段被拒绝，绝不会被静默误解析。
 
 **SDK 版本号不参与兼容判定**：决定插件能否加载的只有 `APIVersion`。官方发行包按「网关版本 + `drivers.version` + SDK 版本」成对发布；完整配对矩阵、插件兼容区间与 `APIVersion` 进位规则见[网关版本兼容性](https://github.com/Ellisata/iot-gateway/blob/main/docs/version-compatibility.md)。
 

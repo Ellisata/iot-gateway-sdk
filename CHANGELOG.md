@@ -7,6 +7,64 @@ All notable changes to the iot-gateway SDK are documented here, following
 each release, followed by English entries. The wire protocol has its own
 `APIVersion`; see the compatibility table in README.md.
 
+## [0.6.0] - 2026-11-24
+
+### 新增
+
+- `driver.DeviceAddress.ByteOrderLayout` 与 `driver.WriteRequest.ByteOrderLayout`：
+  点位级字节/字排列布局（如 Modbus 的 `ABCD` / `CDAB` / `BADC` / `DCBA`，64 位为
+  `ABCDEFGH` / `CDABGHEF` / …）。空串 = 跟随设备配置（`protocol_json`），这是旧
+  点位的唯一行为。布局按**值宽度**解释，同一布局名在 16/32/64 位下展开成不同的
+  字节排列；只有「同一设备上不同点位可能采用不同厂商约定」的协议（如 Modbus）
+  用得到，其余协议忽略。读写必须用同一份值，否则会出现「读回来是对的、写下去
+  是错的」。
+- `driversdk.WireAddr.ByteOrderLayout`，以及 read 入参的位置式二进制载荷。
+  解码发生在插件进程里，网关侧没有解码函数，因此该字段必须过线。
+- `driver.RangeSig` 现在把 `ByteOrderLayout` 纳入指纹。缓存的规划里保留着构建
+  时那份 addrs，解析直接读它 —— 指纹若不覆盖布局，单改点位布局会命中旧规划、
+  按旧布局解码。新增 `TestRangeSigIncludesByteOrder` 守住这一点。
+
+### 兼容性
+
+- 线协议 `APIVersion` **4 → 5**。`ReadParams` 是位置式二进制载荷（不是 JSON），
+  旧插件会把新增的字符串当成额外尾随字节并在 `Done()` 处报错，因此**必须整体
+  重编**；新插件在旧网关上握手阶段即被拒绝。没有采用「旧插件忽略未知字段」的
+  兼容路线：静默按设备级配置解码会采出看似合理、实为错位排列的值，比直接拒绝
+  更糟。帧魔数依旧保持 `IGP2`。
+- 不使用点位级布局的插件行为不变：`ByteOrderLayout` 为空串时完全等同旧逻辑，
+  改动的只是协议版本号。
+
+### Added
+
+- `driver.DeviceAddress.ByteOrderLayout` and `driver.WriteRequest.ByteOrderLayout`:
+  a point-level byte/word layout (e.g. Modbus `ABCD` / `CDAB` / `BADC` / `DCBA`;
+  64-bit `ABCDEFGH` / `CDABGHEF` / …). An empty string means "follow the device
+  configuration" (`protocol_json`), which is the only behavior old points had. The
+  layout is interpreted per value width — the same name expands to different byte
+  arrangements at 16/32/64 bits — and is only meaningful for protocols where points
+  on one device may follow different vendor conventions (Modbus); other protocols
+  ignore it. Read and write must use the same value, or a point reads back right
+  and writes wrong.
+- `driversdk.WireAddr.ByteOrderLayout`, carried in the positional binary payload
+  of read requests. Decoding happens in the plugin process and the gateway has no
+  decode function, so the field must cross the wire.
+- `driver.RangeSig` now folds `ByteOrderLayout` into the fingerprint. A cached
+  plan keeps the `addrs` it was built from and parsing reads them directly, so a
+  fingerprint that ignored the layout would hit the old plan and decode with the
+  old layout. `TestRangeSigIncludesByteOrder` guards this.
+
+### Compatibility
+
+- Wire `APIVersion` goes **4 → 5**. `ReadParams` is a positional binary payload
+  (not JSON): an old plugin treats the new string as extra trailing bytes and
+  fails at `Done()`, so both sides **must be rebuilt**; a new plugin is rejected at
+  handshake by an old gateway. The "old plugin ignores unknown fields" route was
+  deliberately not taken — silently decoding with the device-level configuration
+  yields plausible-looking but misordered values, which is worse than a hard
+  refusal. Frame magic stays `IGP2`.
+- Plugins that never use point-level layouts are behaviorally unchanged: an empty
+  `ByteOrderLayout` is exactly the old logic; only the protocol version moves.
+
 ## [0.5.0] - 2026-11-20
 
 ### 新增

@@ -27,7 +27,8 @@ import (
 // EncodeBinary 值接收者 —— 见 pluginwire.BinaryEncoder 的注释：
 // client/remote 都是以**值**把 ReadParams 交给 EncodeBody 的。
 func (p ReadParams) EncodeBinary() []byte {
-	// 每个点位 3 个短字符串，估价 48 字节；估小了只是多几次扩容。
+	// 每个点位 4 个短字符串（ByteOrderLayout 绝大多数为空，占 1 字节），
+	// 估价 48 字节；估小了只是多几次扩容。
 	e := pluginwire.NewEncoder(32 + 48*len(p.Addrs))
 	e.Uvarint(p.Session)
 	e.Uvarint(uint64(len(p.Addrs)))
@@ -35,6 +36,7 @@ func (p ReadParams) EncodeBinary() []byte {
 		e.String(p.Addrs[i].ID)
 		e.String(p.Addrs[i].Name)
 		e.String(p.Addrs[i].DataType)
+		e.String(p.Addrs[i].ByteOrderLayout)
 	}
 	return e.Bytes()
 }
@@ -52,14 +54,15 @@ func (p *ReadParams) DecodeBinary(b []byte) error {
 	// 得自己补这一课）。而只取一个固定的小常数也不行：正常帧（n=1000）
 	// 会被迫 append 扩容十来次，白白多拷几遍、多分一倍的量。
 	//
-	// 每个点位至少 3 个字节（3 个空字符串各带 1 字节长度前缀），故剩余
-	// 字节数除以 3 是一个**由缓冲区本身给出**的、无需信任 n 的上界。
-	addrs := make([]WireAddr, 0, int(min(n, uint64(d.Len()/3))))
+	// 每个点位至少 4 个字节（4 个空字符串各带 1 字节长度前缀），故剩余
+	// 字节数除以 4 是一个**由缓冲区本身给出**的、无需信任 n 的上界。
+	addrs := make([]WireAddr, 0, int(min(n, uint64(d.Len()/4))))
 	for i := uint64(0); i < n; i++ {
 		var a WireAddr
 		a.ID = d.String()
 		a.Name = d.String()
 		a.DataType = d.String()
+		a.ByteOrderLayout = d.String()
 		if d.Err() != nil {
 			return d.Done()
 		}

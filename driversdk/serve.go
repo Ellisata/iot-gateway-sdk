@@ -1144,7 +1144,12 @@ func (s *server) handleRead(f pluginwire.Frame) {
 	// 只还原驱动真正读取的字段，其余取零值（见 WireAddr 注释）。
 	addrs := make([]driver.DeviceAddress, len(p.Addrs))
 	for i, a := range p.Addrs {
-		addrs[i] = driver.DeviceAddress{ID: a.ID, Name: a.Name, DataType: a.DataType}
+		addrs[i] = driver.DeviceAddress{
+			ID:              a.ID,
+			Name:            a.Name,
+			DataType:        a.DataType,
+			ByteOrderLayout: a.ByteOrderLayout,
+		}
 	}
 
 	// 查表与加锁是两个动作：本请求可能是在 pluginwire.MethodClose 拆完驱动之后才拿到锁的

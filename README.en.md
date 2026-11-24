@@ -121,12 +121,15 @@ The gateway loads it on start and hot-loads new plugin binaries at runtime.
 
 | SDK | Wire `APIVersion` | Gateways that accept it |
 |---|---|---|
-| v0.1.x | 4 | Any gateway that accepts `APIVersion == 4` (currently v0.2.0 and later) |
+| v0.1.x / v0.2.x | 4 | Any gateway that accepts `APIVersion == 4` |
+| v0.3.x – v0.5.x | 4 | Same as above |
+| v0.6.x | 5 | Any gateway that accepts `APIVersion == 5` |
 
-The wire protocol is versioned independently from the SDK's semver. A driver
-built against SDK v0.1.x is compatible with any gateway that accepts
-`APIVersion == 4`. A mismatch is rejected at handshake time, never silently
-misinterpreted.
+The wire protocol is versioned independently from the SDK's semver, and only
+`APIVersion` decides whether a plugin loads: SDK v0.6.0 bumps the protocol to 5
+(read requests gain a point-level layout field), so plugins built against 0.6.x
+**cannot** load on a gateway that only accepts 4, and vice versa. A mismatch is
+rejected at handshake time, never silently misinterpreted.
 
 **The SDK version does not participate in the compatibility decision** — only
 `APIVersion` does. Official releases pair a gateway version, a

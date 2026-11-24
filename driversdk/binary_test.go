@@ -16,11 +16,17 @@ import (
 func sampleAddrs(n int) []driversdk.WireAddr {
 	addrs := make([]driversdk.WireAddr, n)
 	for i := range addrs {
-		addrs[i] = driversdk.WireAddr{
+		a := driversdk.WireAddr{
 			ID:       fmt.Sprintf("0192f3a1-0000-7000-8000-%012d", i),
 			Name:     fmt.Sprintf("point_%d", i),
 			DataType: "int16",
 		}
+		// 覆盖两种形态：空串（跟随设备）与非空布局。只写空串的话
+		// encode/decode 漏掉这个字段不会被 round-trip 测试发现。
+		if i > 0 && i%2 == 0 {
+			a.ByteOrderLayout = "CDAB"
+		}
+		addrs[i] = a
 	}
 	return addrs
 }

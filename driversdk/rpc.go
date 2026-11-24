@@ -42,11 +42,16 @@ type ConnectResult struct {
 // （采集引擎的 toRecords 直接取 addrs[i]），不过线——2000 点位/批时
 // 这些字段占了大半 JSON 体积。
 //
-// 新增字段是向后兼容的协议变更，由 Meta.APIVersion 把关。
+// ByteOrderLayout 是点位级字节/字排列布局（空串 = 跟随设备配置）。它**必须**过线：
+// 解码发生在插件进程里，网关侧没有解码函数。注意 ReadParams 走位置式二进制载荷
+// （见 binary.go），因此加字段是**不向后兼容**的线协议变更，由 Meta.APIVersion 把关。
 type WireAddr struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	DataType string `json:"dataType"`
+
+	// ByteOrderLayout 点位级布局；空串表示跟随设备配置。
+	ByteOrderLayout string `json:"byteOrderLayout,omitempty"`
 }
 
 // ReadParams read 请求参数。

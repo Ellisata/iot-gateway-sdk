@@ -48,6 +48,10 @@ type WriteRequest struct {
 	DataType string `json:"dataType"`
 	// Value 待写入值的字符串形式。按 DataType 的 Kind 解析（bool/int/uint/float/string/time）。
 	Value string `json:"value"`
+	// ByteOrderLayout 点位级字节/字排列布局，语义与读路径的
+	// driver.DeviceAddress 同名字段完全一致：空串 = 跟随设备配置。
+	// 写与读必须用同一份值，否则同一个点位会「读回来是对的、写下去是错的」。
+	ByteOrderLayout string `json:"byteOrderLayout,omitempty"`
 }
 
 // WriteResult 单点写入结果。
