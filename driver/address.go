@@ -18,14 +18,15 @@ type DeviceAddress struct {
 	Name     string `json:"name"`
 	DataType string `json:"dataType"`
 
-	// ByteOrderLayout 点位级字节/字排列布局（如 Modbus 的 ABCD / CDAB /
-	// BADC / DCBA，64 位为 ABCDEFGH / CDABGHEF / …）。空串 = **跟随设备配置**
+	// ByteOrderLayout 点位级字节/字排列布局（如 ABCD / CDAB / BADC / DCBA，
+	// 64 位为 ABCDEFGH / CDABGHEF / …）。空串 = **跟随设备配置**
 	// （protocol_json），这是绝大多数点位的取值，也是旧插件的唯一行为。
 	//
 	// 布局按**值宽度**解释：同一个布局名在 16/32/64 位下展开成不同的字节排列
-	// （见各驱动的布局表）。只有 Modbus 这类「同一设备上不同点位可能采用不同厂商
-	// 约定」的协议用得到；其余协议忽略该字段。驱动应把它当作 DECODE 约定的一部分：
-	// 读与写（driver.WriteRequest 的同名字段）必须使用同一份值，否则会出现
+	// （见各驱动的布局表）。目前 Modbus 与欧姆龙 FINS 实现了该字段（FINS 的
+	// 字符串、bool、8 位类型与位地址不适用）；其余协议忽略它，宿主也会在保存时
+	// 拒绝给它们配置非空布局。驱动应把它当作 DECODE 约定的一部分：读与写
+	// （driver.WriteRequest 的同名字段）必须使用同一份值，否则会出现
 	// 「读对一个、写错一个」。
 	ByteOrderLayout string `json:"byteOrderLayout,omitempty"`
 
